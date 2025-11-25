@@ -1,6 +1,6 @@
 [package]
 name = "tulna-rs"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Kush Bisen <mailkushbisen@gmail.com>"]
 description = "A library for parsing and checking equivalence relation of semantic queries including SPARQL, RSP-QL, and JanusQL"

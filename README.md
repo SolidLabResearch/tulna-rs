@@ -2,6 +2,8 @@
 
 A Rust library for RDF graph isomorphism and semantic query equivalence checking using an efficient hash-based grounding algorithm to detect the graph isomorphism.
 
+> **Etymology**: The name "tulna" is inspired by the Hindi word *Tulanā* (तुलना), which means "comparison" — reflecting the library's purpose of comparing RDF graphs and semantic queries.
+
 ## Features
 
 - **Graph Isomorphism** - Efficient RDF graph structural comparison
