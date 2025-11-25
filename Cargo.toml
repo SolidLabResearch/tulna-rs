@@ -1,9 +1,9 @@
 [package]
 name = "tulna-rs"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["Kush Bisen <mailkushbisen@gmail.com>"]
-description = "A library for parsing and checking equivalence relation of semantic queries including SPARQL, RSP-QL, and JanusQL"
+description = "A Rust library for RDF graph isomorphism and semantic query equivalence checking using an efficient hash-based grounding algorithm to detect the graph isomorphism."
 license = "MIT"
 repository = "https://github.com/SolidLabResearch/tulna-rs"
 homepage = "https://github.com/SolidLabResearch/tulna-rs"

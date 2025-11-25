@@ -15,7 +15,7 @@ A Rust library for RDF graph isomorphism and semantic query equivalence checking
 
 ```toml
 [dependencies]
-tulna-rs = "0.1.0"
+tulna-rs = "0.1.2"
 ```
 
 ## Quick Start
