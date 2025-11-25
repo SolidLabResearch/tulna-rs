@@ -167,7 +167,9 @@ Algorithm based on:
 
 ## Contributing
 
-Contributions welcome. Please ensure:
+
+Before submitting a pull request, ensure:
 - All tests pass: `cargo test`
 - Code is formatted: `cargo fmt`
-- No clippy warnings: `cargo clippy`
+- Documentation builds: `cargo doc --no-deps`
+
