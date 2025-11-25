@@ -299,8 +299,10 @@ impl JanusQLParser {
         match window.window_type {
             WindowType::HistoricalFixed => {
                 if let (Some(start), Some(end)) = (window.start, window.end) {
-                    let filter_clause =
-                        format!("\n FILTER(?timestamp >= {} && ?timestamp <= {})", start, end);
+                    let filter_clause = format!(
+                        "\n FILTER(?timestamp >= {} && ?timestamp <= {})",
+                        start, end
+                    );
                     adapted.replace("}&", &format!("{}\n}}", filter_clause))
                 } else {
                     adapted

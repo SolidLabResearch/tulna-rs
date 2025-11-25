@@ -1,8 +1,18 @@
 [package]
 name = "tulna-rs"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+authors = ["Kush Bisen <mailkushbisen@gmail.com>"]
+description = "A library for parsing and checking equivalence relation of semantic queries including SPARQL, RSP-QL, and JanusQL"
+license = "MIT"
+repository = "https://github.com/SolidLabResearch/tulna-rs"
+homepage = "https://github.com/SolidLabResearch/tulna-rs"
+documentation = "https://docs.rs/tulna-rs"
+readme = "README.md"
+keywords = ["sparql", "rspql", "janusql", "rdf", "query-isomorphism"]
+categories = ["parser-implementations", "algorithms"]
+exclude = ["src/main.rs"]
 
 [dependencies]
 regex = "1.12.2"
-sophia_isomorphism = "0.9.0"
+murmur3 = "0.5"

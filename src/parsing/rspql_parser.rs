@@ -16,11 +16,18 @@ impl RSPQLParser {
         let mut sparql_lines: Vec<String> = Vec::new();
         let mut prefix_mapper: HashMap<String, String> = HashMap::new();
 
+        // Compile regex patterns once outside the loop
+        let register_re = Regex::new(r"REGISTER +([^ ]+) +<([^>]+)> AS").unwrap();
+        let window_re = Regex::new(
+            r"FROM +NAMED +WINDOW +([^ ]+) +ON +STREAM +([^ ]+) +\[RANGE +([^ ]+) +STEP +([^ ]+)\]",
+        )
+        .unwrap();
+        let prefix_re = Regex::new(r"PREFIX +([^:]*): +<([^>]+)>").unwrap();
+
         for line in self.rspql_query.lines() {
             let trimmed_line = line.trim();
             if trimmed_line.starts_with("REGISTER") {
-                let re = Regex::new(r"REGISTER +([^ ]+) +<([^>]+)> AS").unwrap();
-                for captures in re.captures_iter(trimmed_line) {
+                for captures in register_re.captures_iter(trimmed_line) {
                     let op_str = captures.get(1).unwrap().as_str();
                     let name = captures.get(2).unwrap().as_str();
                     if let Some(operator) = Self::parse_operator(op_str) {
@@ -28,8 +35,7 @@ impl RSPQLParser {
                     }
                 }
             } else if trimmed_line.starts_with("FROM NAMED WINDOW") {
-                let re = Regex::new(r"FROM +NAMED +WINDOW +([^ ]+) +ON +STREAM +([^ ]+) +\[RANGE +([^ ]+) +STEP +([^ ]+)\]").unwrap();
-                for captures in re.captures_iter(trimmed_line) {
+                for captures in window_re.captures_iter(trimmed_line) {
                     let window_name =
                         Self::unwrap(captures.get(1).unwrap().as_str(), &prefix_mapper);
                     let stream_name =
@@ -60,8 +66,7 @@ impl RSPQLParser {
                     sparql_line = sparql_line.replace("WINDOW", "GRAPH");
                 }
                 if sparql_line.starts_with("PREFIX") {
-                    let re = Regex::new(r"PREFIX +([^:]*): +<([^>]+)>").unwrap();
-                    for captures in re.captures_iter(&sparql_line) {
+                    for captures in prefix_re.captures_iter(&sparql_line) {
                         let prefix = captures.get(1).unwrap().as_str().to_string();
                         let iri = captures.get(2).unwrap().as_str().to_string();
                         prefix_mapper.insert(prefix, iri);

@@ -62,7 +62,7 @@ impl SparqlParser {
             construct: Regex::new(r"(?i)CONSTRUCT\s*\{")?,
             ask: Regex::new(r"(?i)ASK\s*\{")?,
             describe: Regex::new(r"(?i)DESCRIBE\s+(.+?)(?:WHERE|FROM|\{)")?,
-            from: Regex::new(r"(?i)FROM\s+(?!NAMED)(<[^>]+>|\S+)")?,
+            from: Regex::new(r"(?i)^FROM\s+(<[^>]+>|\S+)")?,
             from_named: Regex::new(r"(?i)FROM\s+NAMED\s+(<[^>]+>|\S+)")?,
             order_by: Regex::new(r"(?i)ORDER\s+BY\s+(.+?)(?:LIMIT|OFFSET|$)")?,
             limit: Regex::new(r"(?i)LIMIT\s+(\d+)")?,
@@ -137,7 +137,9 @@ impl SparqlParser {
                         .from_named_clauses
                         .push(self.unwrap_iri(graph, &parsed.prefixes));
                 }
-            } else if trimmed_line.to_uppercase().starts_with("FROM") {
+            } else if trimmed_line.to_uppercase().starts_with("FROM")
+                && !trimmed_line.to_uppercase().contains("NAMED")
+            {
                 if let Some(captures) = self.from.captures(trimmed_line) {
                     let graph = captures.get(1).unwrap().as_str();
                     parsed
