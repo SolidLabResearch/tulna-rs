@@ -512,7 +512,37 @@ impl GraphIsomorphism {
             return None;
         }
 
-        Some(bijection)
+        // Verify the bijection preserves graph structure (edges) before returning
+        if Self::verify_bijection(blank_quads_a, blank_quads_b, &bijection) {
+            Some(bijection)
+        } else {
+            None
+        }
+    }
+
+    /// Verify that applying the bijection to graph A yields graph B.
+    fn verify_bijection(
+        graph_a: &[NormalizedTriple],
+        graph_b: &[NormalizedTriple],
+        bijection: &HashMap<String, String>,
+    ) -> bool {
+        if graph_a.len() != graph_b.len() {
+            return false;
+        }
+
+        let index_b = Self::index_graph(graph_b);
+
+        for quad in graph_a {
+            let s = bijection.get(&quad.subject).unwrap_or(&quad.subject);
+            let p = bijection.get(&quad.predicate).unwrap_or(&quad.predicate);
+            let o = bijection.get(&quad.object).unwrap_or(&quad.object);
+
+            let key = format!("{}|{}|{}", s, p, o);
+            if !index_b.contains_key(&key) {
+                return false;
+            }
+        }
+        true
     }
 
     /// Create hash signatures for blank nodes based on their structural context.
