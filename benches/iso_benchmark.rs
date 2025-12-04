@@ -1,12 +1,37 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use tulna_rs::graph::{GraphIsomorphism, Triple, TripleNode};
 
 fn make_triple(s: &str, p: &str, o: &str) -> Triple {
     Triple {
-        subject: if s.starts_with('?') { TripleNode::Variable(s.to_string()) } else { TripleNode::IRI(s.to_string()) },
+        subject: if s.starts_with('?') {
+            TripleNode::Variable(s.to_string())
+        } else {
+            TripleNode::IRI(s.to_string())
+        },
         predicate: TripleNode::IRI(p.to_string()),
-        object: if o.starts_with('?') { TripleNode::Variable(o.to_string()) } else if o.starts_with('"') { TripleNode::Literal(o.trim_matches('"').to_string()) } else { TripleNode::IRI(o.to_string()) },
+        object: if o.starts_with('?') {
+            TripleNode::Variable(o.to_string())
+        } else if o.starts_with('"') {
+            TripleNode::Literal(o.trim_matches('"').to_string())
+        } else {
+            TripleNode::IRI(o.to_string())
+        },
     }
+}
+
+fn generate_star_graph(size: u64) -> (Vec<Triple>, Vec<Triple>) {
+    let mut graph1 = Vec::with_capacity(size as usize);
+    let mut graph2 = Vec::with_capacity(size as usize);
+
+    for i in 0..size {
+        graph1.push(make_triple(
+            "?root",
+            "http://hasChild",
+            &format!("?child{}", i),
+        ));
+        graph2.push(make_triple("?r", "http://hasChild", &format!("?c{}", i)));
+    }
+    (graph1, graph2)
 }
 
 fn bench_simple_isomorphism(c: &mut Criterion) {
@@ -49,19 +74,26 @@ fn bench_regular_graph_verification(c: &mut Criterion) {
     });
 }
 
-fn bench_large_star_graph(c: &mut Criterion) {
-    let mut graph1 = Vec::new();
-    let mut graph2 = Vec::new();
-    
-    for i in 0..100 {
-        graph1.push(make_triple("?root", "http://hasChild", &format!("?child{}", i)));
-        graph2.push(make_triple("?r", "http://hasChild", &format!("?c{}", i)));
-    }
+fn bench_star_graph_scaling(c: &mut Criterion) {
+    let mut group = c.benchmark_group("star_graph_scaling");
 
-    c.bench_function("star_graph_100", |b| {
-        b.iter(|| GraphIsomorphism::are_isomorphic(black_box(&graph1), black_box(&graph2)))
-    });
+    // Define the sizes to benchmark
+    let sizes = [10, 100, 1_000, 10_000]; // 100k might be too slow for CI/quick tests, can be added if needed
+
+    for size in sizes.iter() {
+        group.throughput(Throughput::Elements(*size));
+        group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
+            let (graph1, graph2) = generate_star_graph(size);
+            b.iter(|| GraphIsomorphism::are_isomorphic(black_box(&graph1), black_box(&graph2)));
+        });
+    }
+    group.finish();
 }
 
-criterion_group!(benches, bench_simple_isomorphism, bench_regular_graph_verification, bench_large_star_graph);
+criterion_group!(
+    benches,
+    bench_simple_isomorphism,
+    bench_regular_graph_verification,
+    bench_star_graph_scaling
+);
 criterion_main!(benches);
