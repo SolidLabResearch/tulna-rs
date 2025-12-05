@@ -177,6 +177,7 @@
 //! ```
 
 use crate::isomorphism::core::{Triple, TripleNode};
+use crate::TulnaError;
 use std::collections::{HashMap, HashSet};
 use std::io::Cursor;
 
@@ -227,10 +228,7 @@ impl GraphIsomorphism {
     ///
     /// assert!(GraphIsomorphism::are_isomorphic(&graph1, &graph2).unwrap());
     /// ```
-    pub fn are_isomorphic(
-        graph1: &[Triple],
-        graph2: &[Triple],
-    ) -> Result<bool, Box<dyn std::error::Error>> {
+    pub fn are_isomorphic(graph1: &[Triple], graph2: &[Triple]) -> Result<bool, TulnaError> {
         Self::check_bgp_isomorphism(graph1, graph2)
     }
 
@@ -238,10 +236,7 @@ impl GraphIsomorphism {
     /// This converts variables to blank nodes and checks for graph isomorphism.
     ///
     /// This method is used internally and by the query isomorphism API.
-    pub fn check_bgp_isomorphism(
-        bgp1: &[Triple],
-        bgp2: &[Triple],
-    ) -> Result<bool, Box<dyn std::error::Error>> {
+    pub fn check_bgp_isomorphism(bgp1: &[Triple], bgp2: &[Triple]) -> Result<bool, TulnaError> {
         if bgp1.len() != bgp2.len() {
             return Ok(false);
         }
@@ -429,26 +424,35 @@ impl GraphIsomorphism {
 
         // Break quickly if graphs contain different grounded nodes
         if hashes_a.len() != hashes_b.len() {
+            println!(
+                "DEBUG: Different grounded count: {} vs {}",
+                hashes_a.len(),
+                hashes_b.len()
+            );
             return None;
         }
 
         for hash_value in hashes_a.values() {
             if !Self::hash_contains_value(&hashes_b, *hash_value) {
+                println!("DEBUG: Hash mismatch in grounded");
                 return None;
             }
         }
 
         // Map blank nodes from graph A to graph B using created hashes
+        // Only map grounded nodes here; leave ambiguous nodes for speculation phase
         let mut bijection: HashMap<String, String> = HashMap::new();
         let mut used_b_nodes: HashSet<String> = HashSet::new();
 
         for node_a in blank_nodes_a {
-            if let Some(&hash_a) = ungrounded_hashes_a.get(node_a) {
+            // Only map if this node is grounded (uniquely identifiable)
+            if let Some(&hash_a) = hashes_a.get(node_a) {
                 for node_b in blank_nodes_b {
                     if used_b_nodes.contains(node_b) {
                         continue;
                     }
-                    if let Some(&hash_b) = ungrounded_hashes_b.get(node_b) {
+                    // Match against grounded nodes in graph B
+                    if let Some(&hash_b) = hashes_b.get(node_b) {
                         if hash_a == hash_b {
                             bijection.insert(node_a.clone(), node_b.clone());
                             used_b_nodes.insert(node_b.clone());
@@ -489,6 +493,7 @@ impl GraphIsomorphism {
                         ungrounded_hashes_b.get(node_b),
                     ) {
                         if hash_a == hash_b {
+                            println!("DEBUG: Speculating {} -> {}", node_a, node_b);
                             let new_hash = Self::hash_string(node_a);
                             let mut new_grounded_a = grounded_hashes_a.clone();
                             new_grounded_a.insert(node_a.clone(), new_hash);
@@ -509,6 +514,7 @@ impl GraphIsomorphism {
                     }
                 }
             }
+            println!("DEBUG: Recursion failed");
             return None;
         }
 
@@ -516,6 +522,7 @@ impl GraphIsomorphism {
         if Self::verify_bijection(blank_quads_a, blank_quads_b, &bijection) {
             Some(bijection)
         } else {
+            println!("DEBUG: Verification failed");
             None
         }
     }

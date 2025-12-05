@@ -16,9 +16,11 @@ exclude = ["src/main.rs"]
 [dependencies]
 regex = "1.12.2"
 murmur3 = "0.5"
+thiserror = "2.0.17"
 
 [dev-dependencies]
 criterion = "0.5"
+proptest = "1.9.0"
 
 [[bench]]
 name = "iso_benchmark"

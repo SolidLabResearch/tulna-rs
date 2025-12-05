@@ -130,7 +130,7 @@ impl SparqlParser {
                 }
             }
             // Extract FROM clauses
-            else if trimmed_line.to_uppercase().starts_with("FROM NAMED") {
+            if trimmed_line.to_uppercase().starts_with("FROM NAMED") {
                 if let Some(captures) = self.from_named.captures(trimmed_line) {
                     let graph = captures.get(1).unwrap().as_str();
                     parsed
@@ -147,15 +147,17 @@ impl SparqlParser {
                         .push(self.unwrap_iri(graph, &parsed.prefixes));
                 }
             }
+
             // Track WHERE clause
-            else if trimmed_line.to_uppercase().starts_with("WHERE")
-                || trimmed_line.starts_with('{')
+            // We check for WHERE or { to start the clause. We use contains because
+            // WHERE might be on the same line as SELECT.
+            if !in_where_clause
+                && (trimmed_line.to_uppercase().contains("WHERE") || trimmed_line.starts_with('{'))
             {
                 in_where_clause = true;
-                where_lines.push(line);
-                brace_count += trimmed_line.matches('{').count();
-                brace_count -= trimmed_line.matches('}').count();
-            } else if in_where_clause {
+            }
+
+            if in_where_clause {
                 brace_count += trimmed_line.matches('{').count();
                 brace_count -= trimmed_line.matches('}').count();
                 where_lines.push(line);

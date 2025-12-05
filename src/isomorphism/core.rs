@@ -1,7 +1,7 @@
 use crate::parsing::janusql_parser::JanusQLParser;
 use crate::parsing::rspql_parser::RSPQLParser;
 use crate::parsing::sparql_parser::SparqlParser;
-use regex::Regex;
+use crate::TulnaError;
 
 /// Supported query types for isomorphism checking
 #[derive(Debug, Clone, PartialEq)]
@@ -83,7 +83,7 @@ impl QueryIsomorphism {
     }
 
     /// Parse a query based on its detected type
-    pub fn parse_query(query: &str) -> Result<IsomorphismQuery, Box<dyn std::error::Error>> {
+    pub fn parse_query(query: &str) -> Result<IsomorphismQuery, TulnaError> {
         let query_type = Self::detect_query_type(query);
 
         match query_type {
@@ -94,9 +94,11 @@ impl QueryIsomorphism {
     }
 
     /// Parse a SPARQL query
-    fn parse_sparql(query: &str) -> Result<IsomorphismQuery, Box<dyn std::error::Error>> {
-        let parser = SparqlParser::new()?;
-        let parsed = parser.parse(query)?;
+    fn parse_sparql(query: &str) -> Result<IsomorphismQuery, TulnaError> {
+        let parser = SparqlParser::new().map_err(|e| TulnaError::ParseError(e.to_string()))?;
+        let parsed = parser
+            .parse(query)
+            .map_err(|e| TulnaError::ParseError(e.to_string()))?;
         let bgp = Self::extract_bgp_from_where(&parsed.where_clause)?;
 
         Ok(IsomorphismQuery {
@@ -113,7 +115,7 @@ impl QueryIsomorphism {
     }
 
     /// Parse an RSPQL query
-    fn parse_rspql(query: &str) -> Result<IsomorphismQuery, Box<dyn std::error::Error>> {
+    fn parse_rspql(query: &str) -> Result<IsomorphismQuery, TulnaError> {
         let parser = RSPQLParser::new(query.to_string());
         let parsed = parser.parse();
         let bgp = Self::extract_bgp_from_where(&parsed.sparql_query)?;
@@ -144,9 +146,11 @@ impl QueryIsomorphism {
     }
 
     /// Parse a JanusQL query
-    fn parse_janusql(query: &str) -> Result<IsomorphismQuery, Box<dyn std::error::Error>> {
-        let parser = JanusQLParser::new()?;
-        let parsed = parser.parse(query)?;
+    fn parse_janusql(query: &str) -> Result<IsomorphismQuery, TulnaError> {
+        let parser = JanusQLParser::new().map_err(|e| TulnaError::ParseError(e.to_string()))?;
+        let parsed = parser
+            .parse(query)
+            .map_err(|e| TulnaError::ParseError(e.to_string()))?;
         let bgp = Self::extract_bgp_from_where(&parsed.where_clause)?;
 
         let (stream_name, window_name, width, slide, offset, start, end) =
@@ -190,37 +194,177 @@ impl QueryIsomorphism {
     }
 
     /// Extract Basic Graph Pattern from WHERE clause
-    fn extract_bgp_from_where(
-        where_clause: &str,
-    ) -> Result<Vec<Triple>, Box<dyn std::error::Error>> {
+    ///
+    /// Handles basic triple patterns, including those ending with `.` or `;` (predicate lists)
+    /// and `,` (object lists).
+    /// Note: Does NOT support nested groups or UNIONs yet.
+    fn extract_bgp_from_where(where_clause: &str) -> Result<Vec<Triple>, TulnaError> {
         let mut bgp = Vec::new();
 
         // Extract content between braces
         let content = Self::extract_inner_braces(where_clause);
-
         if content.is_empty() {
             return Ok(bgp);
         }
 
-        // Parse triples using regex - simple pattern for SPO with dots
-        let triple_pattern = Regex::new(
-            r#"([?$]\w+|<[^>]+>|[\w:]+)\s+([?$]\w+|<[^>]+>|[\w:]+|a)\s+([?$]\w+|<[^>]+>|[\w:]+|'[^']*'|"[^"]*")\s*\."#,
-        )?;
+        // Naive approach to handle comments: Remove lines starting with #
+        // Better: Remove text from # to newline, unless inside quotes.
+        // For now, we assume simplified queries without complex comments inside patterns.
+        let clean_content = content
+            .lines()
+            .map(|line| {
+                if let Some(idx) = line.find('#') {
+                    &line[..idx]
+                } else {
+                    line
+                }
+            })
+            .collect::<Vec<&str>>()
+            .join(" ");
 
-        for caps in triple_pattern.captures_iter(&content) {
-            let subject = Self::parse_node(caps.get(1).unwrap().as_str());
-            let predicate = if caps.get(2).unwrap().as_str() == "a" {
-                TripleNode::IRI("http://www.w3.org/1999/02/22-rdf-syntax-ns#type".to_string())
+        // Tokenizer logic: split by spaces, keeping quotes intact
+        // This is a simplified lexer.
+        let mut tokens = Vec::new();
+        let mut current_token = String::new();
+        let mut in_quote = false;
+        let mut quote_char = '\0';
+        let mut in_iri = false;
+
+        for c in clean_content.chars() {
+            if in_quote {
+                current_token.push(c);
+                if c == quote_char {
+                    in_quote = false;
+                }
+            } else if in_iri {
+                current_token.push(c);
+                if c == '>' {
+                    in_iri = false;
+                }
             } else {
-                Self::parse_node(caps.get(2).unwrap().as_str())
+                match c {
+                    '"' | '\'' => {
+                        current_token.push(c);
+                        in_quote = true;
+                        quote_char = c;
+                    }
+                    '<' => {
+                        current_token.push(c);
+                        in_iri = true;
+                    }
+                    ' ' | '\t' | '\n' | '\r' => {
+                        if !current_token.is_empty() {
+                            tokens.push(current_token.clone());
+                            current_token.clear();
+                        }
+                    }
+                    '.' | ';' | ',' => {
+                        if !current_token.is_empty() {
+                            tokens.push(current_token.clone());
+                            current_token.clear();
+                        }
+                        tokens.push(c.to_string());
+                    }
+                    _ => current_token.push(c),
+                }
+            }
+        }
+        if !current_token.is_empty() {
+            tokens.push(current_token);
+        }
+
+        // Parser state machine
+        let mut current_subject: Option<TripleNode> = None;
+        let mut current_predicate: Option<TripleNode> = None;
+        let mut i = 0;
+
+        while i < tokens.len() {
+            let token = &tokens[i];
+
+            // Skip explicit WINDOW clause or GRAPH clause keywords if they appear inside where (simplified)
+            if token.eq_ignore_ascii_case("WINDOW")
+                || token.eq_ignore_ascii_case("GRAPH")
+                || token.eq_ignore_ascii_case("SERVICE")
+            {
+                // Skip the keyword and the next token (IRI) and the brace?
+                // This naive parser only handles BGP.
+                // We just skip for now to avoid crashing, assuming structure is flat-ish.
+                i += 2;
+                continue;
+            }
+
+            // Expect Subject
+            let subject = if let Some(s) = current_subject.clone() {
+                s
+            } else {
+                let s = Self::parse_node(token);
+                i += 1;
+                s
             };
-            let object = Self::parse_node(caps.get(3).unwrap().as_str());
+
+            if i >= tokens.len() {
+                break;
+            }
+            let token = &tokens[i];
+
+            // Expect Predicate
+            let predicate = if let Some(p) = current_predicate.clone() {
+                p
+            } else {
+                let p = if token == "a" {
+                    TripleNode::IRI("http://www.w3.org/1999/02/22-rdf-syntax-ns#type".to_string())
+                } else {
+                    Self::parse_node(token)
+                };
+                i += 1;
+                p
+            };
+
+            if i >= tokens.len() {
+                break;
+            }
+            let token = &tokens[i];
+
+            // Expect Object
+            let object = Self::parse_node(token);
+            i += 1;
 
             bgp.push(Triple {
-                subject,
-                predicate,
+                subject: subject.clone(),
+                predicate: predicate.clone(),
                 object,
             });
+
+            if i >= tokens.len() {
+                break;
+            }
+            let sep = &tokens[i];
+
+            match sep.as_str() {
+                "." => {
+                    current_subject = None;
+                    current_predicate = None;
+                    i += 1;
+                }
+                ";" => {
+                    current_subject = Some(subject);
+                    current_predicate = None;
+                    i += 1;
+                }
+                "," => {
+                    current_subject = Some(subject);
+                    current_predicate = Some(predicate);
+                    i += 1;
+                }
+                _ => {
+                    // Implicit dot or error? We assume implicit end of triple if next is valid start
+                    // But typically SPARQL requires dot.
+                    // If we hit '}', we are done (but extract_inner_braces handled outermost)
+                    // We just reset.
+                    current_subject = None;
+                    current_predicate = None;
+                }
+            }
         }
 
         Ok(bgp)
@@ -270,8 +414,12 @@ impl QueryIsomorphism {
         } else if let Some(stripped) = trimmed.strip_prefix("_:") {
             TripleNode::BlankNode(stripped.to_string())
         } else {
-            // Assume it's a prefixed IRI
-            TripleNode::IRI(trimmed.to_string())
+            // Assume it's a prefixed IRI or a number/bool literal
+            if trimmed == "true" || trimmed == "false" || trimmed.chars().all(|c| c.is_numeric() || c == '.') {
+                 TripleNode::Literal(trimmed.to_string())
+            } else {
+                 TripleNode::IRI(trimmed.to_string())
+            }
         }
     }
 
@@ -317,7 +465,7 @@ impl QueryIsomorphism {
     pub fn is_isomorphic(
         query_one: &str,
         query_two: &str,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
+    ) -> Result<bool, TulnaError> {
         let q1 = Self::parse_query(query_one)?;
         let q2 = Self::parse_query(query_two)?;
 
@@ -363,7 +511,7 @@ impl QueryIsomorphism {
     /// Generate BGP quads from a query string (similar to TypeScript version)
     pub fn generate_bgp_quads_from_query(
         query: &str,
-    ) -> Result<Vec<Triple>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<Triple>, TulnaError> {
         let parsed = Self::parse_query(query)?;
         Ok(parsed.bgp)
     }
@@ -408,5 +556,22 @@ mod tests {
         let where_clause = "WHERE { ?s <http://example.org/p> ?o . }";
         let bgp = QueryIsomorphism::extract_bgp_from_where(where_clause).unwrap();
         assert_eq!(bgp.len(), 1);
+    }
+
+    #[test]
+    fn test_bgp_extraction_with_lists() {
+        let where_clause = "WHERE { ?s <http://p> ?o ; <http://q> ?o2 . }";
+        let bgp = QueryIsomorphism::extract_bgp_from_where(where_clause).unwrap();
+        assert_eq!(bgp.len(), 2);
+        assert_eq!(bgp[0].subject, bgp[1].subject);
+    }
+    
+    #[test]
+    fn test_bgp_extraction_with_commas() {
+        let where_clause = "WHERE { ?s <http://p> ?o , ?o2 . }";
+        let bgp = QueryIsomorphism::extract_bgp_from_where(where_clause).unwrap();
+        assert_eq!(bgp.len(), 2);
+        assert_eq!(bgp[0].subject, bgp[1].subject);
+        assert_eq!(bgp[0].predicate, bgp[1].predicate);
     }
 }

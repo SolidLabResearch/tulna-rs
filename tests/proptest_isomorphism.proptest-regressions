@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 3585241efc90b0f05b02e46c5acc18f3ed843c8f68b56e77fd4f4816cbba4013 # shrinks to graph = [Triple { subject: BlankNode("0"), predicate: Variable("a"), object: Variable("aa") }, Triple { subject: Variable("a0"), predicate: Variable("ab"), object: BlankNode("1") }]

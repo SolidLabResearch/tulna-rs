@@ -54,6 +54,9 @@
 
 pub mod isomorphism;
 pub mod parsing;
+pub mod error;
+
+pub use error::TulnaError;
 
 // Re-export commonly used types for graph isomorphism
 pub mod graph {
